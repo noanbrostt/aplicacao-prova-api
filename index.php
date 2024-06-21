@@ -7,7 +7,7 @@ header('Content-Type: text/html; charset=utf-8');
 if (isset($_REQUEST['acao'])) {
     $acao = $_REQUEST['acao'];
 } else {
-    echo json_encode("Erro nos parametros!");
+    echo json_encode("Erro nos parâmetros!", JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -26,7 +26,7 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     
     // Define o charset para UTF-8 (opcional)
-    // $pdo->exec('SET NAMES utf8');
+    $pdo->exec("SET CLIENT_ENCODING TO 'UTF8'");
     
     // echo "Conexão bem-sucedida!";
 } catch (PDOException $e) {
@@ -55,17 +55,17 @@ switch ($acao) {
             $stmt = $pdo->query($sql);
 
             if ($stmt->rowCount() == 0) {
-                echo json_encode("Usuario nao encontrado");
+                echo json_encode("Usuário não encontrado", JSON_UNESCAPED_UNICODE);
                 return;
             }
 
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            echo json_encode($results);
+            echo json_encode($results, JSON_UNESCAPED_UNICODE);
             return;
 
         } catch (PDOException $e) {
-            die("Erro ao executar SELECT: " . $e->getMessage());
+            die("Erro 1: " . $e->getMessage());
         }
 
         break;
@@ -108,91 +108,126 @@ switch ($acao) {
             $stmt = $pdo->query($sql);
 
             if ($stmt->rowCount() == 0) {
-                echo json_encode("Sem provas");
+                echo json_encode("Sem provas", JSON_UNESCAPED_UNICODE);
                 return;
             }
 
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            echo json_encode($results);
+            echo json_encode($results, JSON_UNESCAPED_UNICODE);
             return;
 
         } catch (PDOException $e) {
-            die("Erro ao executar SELECT: " . $e->getMessage());
+            die("Erro 2: " . $e->getMessage());
         }
 
         break;
 
     
-    case 3: // Começar prova e carregar questôes da prova
+    case 3: // Começar prova (se ainda não foi iniciada) e carregar questôes da prova
 
         try {
             // Parâmetros esperados:
-            $matricula = $_REQUEST['matricula'];
+            // $matricula = $_REQUEST['matricula'];
             $prova = $_REQUEST['prova'];
 
-            // Select para checar se a prova ja foi iniciada
-            $sql = "SELECT dh_fim
-                        FROM sc_psi_prova.tb_prova_respondida
-                        WHERE matricula = '$matricula'
-                            AND co_prova = '$prova'";
-
-            $resultado = pg_query($conexao, $sql);
-
-            if (!$resultado) {
-                $sql = "INSERT INTO sc_psi_prova.tb_prova_respondida
-                            (co_prova
-                            ,matricula
-                            ,dh_inicio)
-                        VALUES 
-                            ('$prova'
-                            ,'$matricula'
-                            ,'".date('Y-m-d H:i:s')."')";
-
-                // Validação do resultado do insert 
-                $resultado = pg_query($conexao, $sql);
-
-                if (!$resultado) {
-                    echo "Erro na inserção: ".pg_last_error($conexao);
-                    exit;
-                }
-            }
-
             // Select das questôes da prova
-            $questoes = "SELECT  PR.co_prova
+            $sql = "SELECT  PR.co_prova
+                            ,PR.no_prova
+                            ,PE.co_pergunta
+                            ,PE.de_pergunta
+                            ,STRING_AGG(AL.co_alternativa||':-D'||AL.de_alternativa, ';.;') AS alternativas
+                        FROM sc_psi_prova.tb_prova PR
+                        INNER JOIN sc_psi_prova.tb_pergunta PE
+                            ON PE.co_prova = PR.co_prova
+                            AND PE.ic_status = '1'
+                        INNER JOIN sc_psi_prova.tb_alternativa AL
+                            ON AL.co_pergunta = PE.co_pergunta
+                            AND AL.ic_status = '1'
+                        
+                        WHERE PR.co_prova = '$prova'
+                            AND PR.ic_status = '1'
+
+                        GROUP BY PR.co_prova
                                 ,PR.no_prova
-                                ,PE.de_pergunta
-                                ,STRING_AGG(AL.de_alternativa, ';.;') AS alternativas
-                            FROM sc_psi_prova.tb_prova PR
-                            INNER JOIN sc_psi_prova.tb_pergunta PE
-                                ON PE.co_prova = PR.co_prova
-                                AND PE.ic_status = '1'
-                            INNER JOIN sc_psi_prova.tb_alternativa AL
-                                ON AL.co_pergunta = PE.co_pergunta
-                                AND AL.ic_status = '1'
-                            
-                            WHERE PR.co_prova = '$prova'
-                                AND PR.ic_status = '1'
+                                ,PE.co_pergunta
+                                ,PE.de_pergunta";
 
-                            GROUP BY PR.co_prova
-                                    ,PR.no_prova
-                                    ,PE.de_pergunta";
+                $stmt = $pdo->query($sql);
 
-                // Validação do resultado
-                $resultado = pg_query($conexao, $questoes);
+                $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                echo json_encode($results, JSON_UNESCAPED_UNICODE);
+                return;
+
             } catch (PDOException $e) {
-                die("Erro ao executar SELECT: " . $e->getMessage());
+                die("Erro 3: " . $e->getMessage());
             }
 
             break;
 
     
     case 4: // Finalizar prova
-        
+
+            // // Select para checar se a prova ja foi iniciada
+            // $sql = "SELECT co_matricula
+            //             FROM sc_psi_prova.tb_resposta
+            //             WHERE co_matricula = '$matricula'
+            //                 AND co_prova = '$prova'";
+            // $stmt = $pdo->query($sql);
+            // if ($stmt->rowCount() == 0) {
+            // }
+
+            // Parâmetros esperados:
+            $co_prova = $_REQUEST['co_prova'];
+            $co_pergunta = $_REQUEST['co_pergunta'];
+            $co_alternativa = $_REQUEST['co_alternativa'];
+            $co_matricula = $_REQUEST['co_matricula'];
+            $dh_resposta = $_REQUEST['dh_resposta'];
+
+            // Prepara a consulta SQL com placeholders para evitar SQL injection
+            $sql = "INSERT INTO sc_psi_prova.tb_resposta
+                        (co_prova, co_pergunta, co_alternativa, co_matricula, dh_resposta)
+                    VALUES
+                        (:co_prova, :co_pergunta, :co_alternativa, :co_matricula, :dh_resposta)";
+
+            // Prepara a declaração
+            $stmt = $pdo->prepare($sql);
+
+            // Vincula os valores
+            $stmt->bindParam(':co_prova', $co_prova);
+            $stmt->bindParam(':co_pergunta', $co_pergunta);
+            $stmt->bindParam(':co_alternativa', $co_alternativa);
+            $stmt->bindParam(':co_matricula', $co_matricula);
+            $stmt->bindParam(':dh_resposta', $dh_resposta);
+
+            // Executa a declaração
+            if (!$stmt->execute()) {
+                echo "Erro na inserção ".pg_last_error($pdo);
+            }
+
         break;
 
-    
-    case 5:
+
+    case 5: // Chamar a procedure para atualizar as provas pendentes/finalizadas 
+
+          // Parâmetros esperados:
+          $matricula = $_REQUEST['matricula'];
+
+          try {
+            // Prepara a chamada da procedure
+            $stmt = $pdo->prepare("CALL sc_psi_prova.sp_alimenta_prova_resposta(:matriculausuario)");
+
+            // Vincula o parâmetro
+            $stmt->bindParam(':matriculausuario', $matricula, PDO::PARAM_STR);
+        
+            // Executa a procedure
+            $stmt->execute();
+        
+            echo "Procedure chamada com sucesso!";
+        } catch (PDOException $e) {
+            echo 'Erro ao chamar a procedure: ' . $e->getMessage();
+        }
 
         break;
 
