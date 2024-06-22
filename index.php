@@ -12,7 +12,6 @@ if (isset($_REQUEST['acao'])) {
 }
 
 
-
 $host = '172.10.20.47'; // Endereço do servidor PostgreSQL
 $dbname = 'bd_rh_rs'; // Nome do banco de dados PostgreSQL
 $user = 'usr_portal'; // Nome de usuário do PostgreSQL
@@ -54,8 +53,23 @@ switch ($acao) {
 
             $stmt = $pdo->query($sql);
 
+            // Usuário não encontrado
             if ($stmt->rowCount() == 0) {
-                echo json_encode("Usuário não encontrado", JSON_UNESCAPED_UNICODE);
+                // Select no banco de dados
+                $sql = "SELECT 	nome
+                                ,filial
+                                ,co_funcao
+                            FROM public.tb_empregados
+                            WHERE dtdemissao IS NULL
+                                AND matricula = '$matricula'";
+
+                $stmt = $pdo->query($sql);
+
+                if ($stmt->rowCount() == 0) {
+                    echo json_encode(["Erro", "Matrícula não encontrada!"], JSON_UNESCAPED_UNICODE);
+                } else {
+                    echo json_encode(["Erro", "O CPF não condiz com a matrícula!"], JSON_UNESCAPED_UNICODE);
+                }
                 return;
             }
 
