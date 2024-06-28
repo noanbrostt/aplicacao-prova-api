@@ -32,21 +32,24 @@ try {
     die("Erro na conexão: " . $e->getMessage());
 }
 
-// Separa as diferentes coisas que a API faz
-switch ($acao) {
+try {
+    // Separa as diferentes coisas que a API faz
+    switch ($acao) {
 
-    case 1: // Usuário logando no site
+        case 1: // Usuário logando no site
 
-        try {
             // Parâmetros esperados:
             $matricula = $_REQUEST['matricula'];
             $cpf = $_REQUEST['cpf'];
 
             // Select no banco de dados
-            $sql = "SELECT 	nome
-                            ,filial
-                            ,co_funcao
-                        FROM public.tb_empregados
+            $sql = "SELECT 	EM.nome
+                            ,EM.filial
+                            ,EM.co_funcao
+                            ,AD.ic_status
+                        FROM public.tb_empregados EM
+                        LEFT JOIN sc_psi_prova.tb_admins AD
+                            ON CAST(coalesce(AD.co_matricula, '0') AS integer) = EM.matricula
                         WHERE dtdemissao IS NULL
                             AND matricula = '$matricula'
                             AND cpf = '$cpf'";
@@ -78,16 +81,11 @@ switch ($acao) {
             echo json_encode($results, JSON_UNESCAPED_UNICODE);
             return;
 
-        } catch (PDOException $e) {
-            die("Erro 1: " . $e->getMessage());
-        }
+            break;
 
-        break;
+        
+        case 2: // Carregar tela "lista_provas"
 
-    
-    case 2: // Carregar tela "lista_provas"
-
-        try {
             // Parâmetros esperados:
             $matricula = $_REQUEST['matricula'];
 
@@ -131,18 +129,12 @@ switch ($acao) {
             echo json_encode($results, JSON_UNESCAPED_UNICODE);
             return;
 
-        } catch (PDOException $e) {
-            die("Erro 2: " . $e->getMessage());
-        }
+            break;
 
-        break;
+        
+        case 3: // Começar prova (se ainda não foi iniciada) e carregar questôes da prova
 
-    
-    case 3: // Começar prova (se ainda não foi iniciada) e carregar questôes da prova
-
-        try {
             // Parâmetros esperados:
-            // $matricula = $_REQUEST['matricula'];
             $prova = $_REQUEST['prova'];
 
             // Select das questôes da prova
@@ -174,23 +166,10 @@ switch ($acao) {
                 echo json_encode($results, JSON_UNESCAPED_UNICODE);
                 return;
 
-            } catch (PDOException $e) {
-                die("Erro 3: " . $e->getMessage());
-            }
+                break;
 
-            break;
-
-    
-    case 4: // Finalizar prova
-
-            // // Select para checar se a prova ja foi iniciada
-            // $sql = "SELECT co_matricula
-            //             FROM sc_psi_prova.tb_resposta
-            //             WHERE co_matricula = '$matricula'
-            //                 AND co_prova = '$prova'";
-            // $stmt = $pdo->query($sql);
-            // if ($stmt->rowCount() == 0) {
-            // }
+        
+        case 4: // Finalizar prova
 
             // Parâmetros esperados:
             $co_prova = $_REQUEST['co_prova'];
@@ -217,18 +196,17 @@ switch ($acao) {
 
             // Executa a declaração
             if (!$stmt->execute()) {
-                echo "Erro na inserção ".pg_last_error($pdo);
+                echo json_encode("Erro na inserção ".pg_last_error($pdo), JSON_UNESCAPED_UNICODE);
             }
 
-        break;
+            break;
 
 
-    case 5: // Chamar a procedure para atualizar as provas pendentes/finalizadas 
+        case 5: // Chamar a procedure para atualizar as provas pendentes/finalizadas 
 
-          // Parâmetros esperados:
-          $matricula = $_REQUEST['matricula'];
+            // Parâmetros esperados:
+            $matricula = $_REQUEST['matricula'];
 
-          try {
             // Prepara a chamada da procedure
             $stmt = $pdo->prepare("CALL sc_psi_prova.sp_alimenta_prova_resposta(:matriculausuario)");
 
@@ -238,13 +216,144 @@ switch ($acao) {
             // Executa a procedure
             $stmt->execute();
         
-            echo "Procedure chamada com sucesso!";
-        } catch (PDOException $e) {
-            echo 'Erro ao chamar a procedure: ' . $e->getMessage();
-        }
+            echo json_encode("Procedure chamada com sucesso!", JSON_UNESCAPED_UNICODE);
 
-        break;
+            break;
 
+        case 6: // Consulta tela de Relatório Geral 
+
+            // Parâmetros esperados:
+            $data_inicio = $_REQUEST['data_inicio'];
+            $data_fim = $_REQUEST['data_fim'];
+            // $prova = $_REQUEST['prova'];
+
+            // Select das questôes da prova
+            $sql = "SELECT 	RE.matricula
+                            ,EM.nome
+                            ,PR.no_prova AS nome_da_prova
+                            ,RE.nu_acertos + RE.nu_erros AS qtde_questoes
+                            ,RE.nu_acertos
+                            ,RE.nu_erros
+                            ,CONCAT(CEIL((RE.nu_acertos::FLOAT / (RE.nu_acertos + RE.nu_erros) * 100)), '%') AS acertos
+                            , EXTRACT(HOUR FROM RE.dh_fim - RE.dh_inicio) || 'h ' ||
+                                EXTRACT(MINUTE FROM RE.dh_fim - RE.dh_inicio) || 'm ' ||
+                                CEIL(EXTRACT(SECOND FROM RE.dh_fim - RE.dh_inicio)) || 's' AS tempo_de_prova
+                            ,TO_CHAR(RE.dh_fim, 'DD/MM/YYYY') AS dia_da_prova
+
+                        FROM sc_psi_prova.tb_prova_respondida RE
+                        INNER JOIN sc_psi_prova.tb_prova PR
+                            ON PR.co_prova = RE.co_prova
+                        INNER JOIN public.tb_empregados EM
+                            ON EM.matricula = CAST(RE.matricula AS INTEGER)
+                        WHERE RE.dh_fim BETWEEN '$data_inicio' AND '$data_fim'";
+
+                $stmt = $pdo->query($sql);
+
+                $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                echo json_encode($results, JSON_UNESCAPED_UNICODE);
+
+                break;
+
+
+        case 7: // Consulta tela de Habilitar Admin 
+
+            // Select das questôes da prova
+            $sql = "SELECT  co_admin
+                            ,co_matricula
+                            ,nome
+                            ,TO_CHAR(dt_cadastro, 'DD/MM/YYYY') AS dt_cadastro
+                    FROM sc_psi_prova.tb_admins
+                    WHERE ic_status = 1";
+
+            $stmt = $pdo->query($sql);
+
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode($results, JSON_UNESCAPED_UNICODE);
+
+            break;
+
+
+        case 8: // Deleta um Admin 
+
+            // Parâmetros esperados:
+            $co_matricula = $_REQUEST['co_matricula'];
+
+            // Prepara a consulta SQL com placeholders para evitar SQL injection
+            $sql = "DELETE FROM sc_psi_prova.tb_admins
+                    WHERE co_matricula = :co_matricula";
+
+            // Prepara a declaração
+            $stmt = $pdo->prepare($sql);
+
+            // Vincula os valores
+            $stmt->bindParam(':co_matricula', $co_matricula);
+
+            // Executa a declaração
+            if (!$stmt->execute()) {
+                echo json_encode("Erro no delete ".pg_last_error($pdo), JSON_UNESCAPED_UNICODE);
+            }
+            
+            break;
+
+
+        case 9: // Busca o nome da matricula fornecida
+
+            // Parâmetros esperados:
+            $matricula = $_REQUEST['matricula'];
+
+            // Select das questôes da prova
+            $sql = "SELECT nome
+                    FROM public.tb_empregados
+                    WHERE matricula = '$matricula'";
+
+            $stmt = $pdo->query($sql);
+
+            if ($stmt->rowCount() == 0) {
+                echo json_encode("Matrícula não encontrada", JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode($results, JSON_UNESCAPED_UNICODE);
+            
+            
+            break;
+
+
+        case 10: // Adiciona um novo Admin
+
+            // Parâmetros esperados:
+            $co_matricula = $_REQUEST['co_matricula'];
+            $nome = strtoupper($_REQUEST['nome']);
+
+            // Prepara a consulta SQL com placeholders para evitar SQL injection
+            $sql = "INSERT INTO sc_psi_prova.tb_admins
+                        (co_matricula, nome, dt_cadastro, ic_status)
+                    VALUES
+                        (:co_matricula, :nome, now(), 1)";
+
+            // Prepara a declaração
+            $stmt = $pdo->prepare($sql);
+
+            // Vincula os valores
+            $stmt->bindParam(':co_matricula', $co_matricula);
+            $stmt->bindParam(':nome', $nome);
+
+            // Executa a declaração
+            if (!$stmt->execute()) {
+                echo json_encode("Erro na inserção ".pg_last_error($pdo), JSON_UNESCAPED_UNICODE);
+            }
+            
+            
+            break;
+                
+    }
+
+} catch (PDOException $e) {
+    echo json_encode('Erro : ' . $e->getMessage(), JSON_UNESCAPED_UNICODE);
 }
 
 ?>
