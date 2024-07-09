@@ -356,19 +356,19 @@ try {
 
             // Select das questôes da prova
             $sql = "SELECT 	
-                    RE.matricula as 'Matricula Plansul'
-                    ,EM.nome as 'Nome Empregado'
-                    ,PR.no_prova AS 'Nome da Prova' 
-                    ,pgt.de_pergunta as 'Pergunta'
+                    RE.matricula as Matricula_Plansul
+                    ,EM.nome as Nome_Empregado
+                    ,PR.no_prova AS Nome_da_Prova 
+                    ,pgt.de_pergunta as de_pergunta
                     ,(SELECT STRING_AGG(AL.co_alternativa||':-D'||AL.de_alternativa, ';.;') FROM sc_psi_prova.tb_alternativa AL WHERE AL.co_pergunta = pgt.co_pergunta AND ic_status = 1) AS alternativas
-                    ,UPPER(alt.no_alternativa) as 'Resposta Escolhida'
-                    ,(select STRING_AGG(UPPER(no_alternativa), ', ') from sc_psi_prova.tb_alternativa alt2 WHERE alt2.co_pergunta = pgt.co_pergunta and alt2.ic_correto = 1 limit 1) as 'Resposta Correta'
+                    ,UPPER(alt.no_alternativa) as Resposta_Escolhida
+                    ,(select STRING_AGG(UPPER(no_alternativa), ', ') from sc_psi_prova.tb_alternativa alt2 WHERE alt2.co_pergunta = pgt.co_pergunta and alt2.ic_correto = 1 limit 1) as Resposta_Correta
                     ,CASE 
                         WHEN 
                             (select STRING_AGG(UPPER(no_alternativa), ', ') from sc_psi_prova.tb_alternativa alt2 WHERE alt2.co_pergunta = pgt.co_pergunta and alt2.ic_correto = 1 limit 1) LIKE CONCAT('%',UPPER(alt.no_alternativa),'%')
                             THEN 1
                             ELSE 0
-                        END as 'Acertou'
+                        END as Acertou
                         
                 FROM sc_psi_prova.tb_prova_respondida RE
 
