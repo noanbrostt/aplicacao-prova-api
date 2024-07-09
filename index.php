@@ -258,7 +258,6 @@ try {
 
         case 7: // Consulta tela de Habilitar Admin 
 
-            // Select das questôes da prova
             $sql = "SELECT  co_admin
                             ,co_matricula
                             ,nome
@@ -303,7 +302,6 @@ try {
             // Parâmetros esperados:
             $matricula = $_REQUEST['matricula'];
 
-            // Select das questôes da prova
             $sql = "SELECT nome
                     FROM public.tb_empregados
                     WHERE matricula = '$matricula'";
@@ -347,6 +345,69 @@ try {
                 echo json_encode("Erro na inserção ".pg_last_error($pdo), JSON_UNESCAPED_UNICODE);
             }
             
+            
+            break;
+
+        case 11: // Traz a prova respondida do usuário
+
+            // Parâmetros esperados:
+            $co_matricula = $_REQUEST['co_matricula'];
+            $nome_da_prova = strtoupper($_REQUEST['nome_da_prova']);
+
+            // Select das questôes da prova
+            $sql = "SELECT 	
+                    RE.matricula as 'Matricula Plansul'
+                    ,EM.nome as 'Nome Empregado'
+                    ,PR.no_prova AS 'Nome da Prova' 
+                    ,pgt.de_pergunta as 'Pergunta'
+                    ,(SELECT STRING_AGG(AL.co_alternativa||':-D'||AL.de_alternativa, ';.;') FROM sc_psi_prova.tb_alternativa AL WHERE AL.co_pergunta = pgt.co_pergunta AND ic_status = 1) AS alternativas
+                    ,UPPER(alt.no_alternativa) as 'Resposta Escolhida'
+                    ,(select STRING_AGG(UPPER(no_alternativa), ', ') from sc_psi_prova.tb_alternativa alt2 WHERE alt2.co_pergunta = pgt.co_pergunta and alt2.ic_correto = 1 limit 1) as 'Resposta Correta'
+                    ,CASE 
+                        WHEN 
+                            (select STRING_AGG(UPPER(no_alternativa), ', ') from sc_psi_prova.tb_alternativa alt2 WHERE alt2.co_pergunta = pgt.co_pergunta and alt2.ic_correto = 1 limit 1) LIKE CONCAT('%',UPPER(alt.no_alternativa),'%')
+                            THEN 1
+                            ELSE 0
+                        END as 'Acertou'
+                        
+                FROM sc_psi_prova.tb_prova_respondida RE
+
+                INNER JOIN sc_psi_prova.tb_prova PR
+                    ON PR.co_prova = RE.co_prova
+                    AND PR.ic_status = 1
+
+                INNER JOIN public.tb_empregados EM
+                    ON EM.matricula = RE.matricula::INTEGER
+                    
+                INNER JOIN sc_psi_prova.tb_resposta resp
+                    ON resp.co_prova = PR.co_prova
+                    AND resp.co_matricula = RE.matricula 
+
+                INNER JOIN sc_psi_prova.tb_pergunta pgt
+                    ON pgt.co_prova = RE.co_prova
+                    AND pgt.co_pergunta = resp.co_pergunta
+                    AND pgt.ic_status = PR.ic_status
+
+                INNER JOIN sc_psi_prova.tb_alternativa alt
+                    ON alt.co_pergunta = pgt.co_pergunta
+                    AND alt.ic_status = pgt.ic_status 
+                    AND alt.co_alternativa = resp.co_alternativa
+
+                WHERE RE.matricula = '$co_matricula'
+                    AND PR.no_prova = '$nome_da_prova'
+
+                ORDER BY pgt.co_pergunta ASC";
+
+            $stmt = $pdo->query($sql);
+
+            if ($stmt->rowCount() == 0) {
+                echo json_encode("Prova não encontrada", JSON_UNESCAPED_UNICODE);
+                return;
+            }
+
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode($results, JSON_UNESCAPED_UNICODE);
             
             break;
                 
